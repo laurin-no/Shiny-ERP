@@ -6,6 +6,11 @@ library(shinyjs)
 library(xts)
 library(dygraphs)
 library(V8)
+library(diagram)
+library(DiagrammeR)
+
+
+database <- "db.sqlite"
 
 
 ui <- dashboardPage(
@@ -18,25 +23,7 @@ ui <- dashboardPage(
     
     sidebarMenu(
       menuItem("Home", tabName = "tab_home", icon = icon("home")),
-      # Operations
-      menuItem(
-        "Operations",
-        tabName = "tab_operations",
-        icon = icon("industry"),
-        menuItem(
-          "Procurement",
-          tabName = 'tab_procurement',
-          icon = icon('shopping-basket')
-        ),
-        menuItem(
-          "Manufacturing",
-          tabName = 'tab_manufacturing',
-          icon = icon('wrench')
-        ),
-        menuItem("Sales",
-                 tabName = 'tab_sales',
-                 icon = icon('truck'))
-      ),
+      
       # Finance
       menuItem(
         "Finance",
@@ -53,14 +40,36 @@ ui <- dashboardPage(
           icon = icon('balance-scale')
         )
       ),
+      # Operations
+      menuItem(
+        "Operations",
+        tabName = "tab_operations",
+        icon = icon("industry"),
+        menuItem(
+          "Procurement",
+          tabName = 'tab_procurement',
+          icon = icon('shopping-basket'),
+          menuSubItem('Incoming Goods', tabName = 'tab_procurement_incoming_goods'),
+          menuSubItem('Receipt Incoming Goods', tabName = 'tab_procurement_receipt_incoming_goods')
+        ),
+        menuItem(
+          "Manufacturing",
+          tabName = 'tab_manufacturing',
+          icon = icon('wrench')
+        ),
+        menuItem("Sales",
+                 tabName = 'tab_sales',
+                 icon = icon('truck'))
+      ),
+      
       # Data Warehouse
       menuItem(
         "Data warehouse",
         tabName = "tab_datawarehouse",
         icon = icon("database"),
         menuSubItem(
-          'Table Explorer (SQLITE)',
-          tabName = 'tab_tableexplorer',
+          'Table Browser (SQLITE)',
+          tabName = 'tab_tablebrowser',
           icon = icon('table')
         )
       ),
@@ -88,10 +97,9 @@ ui <- dashboardPage(
   
   
   dashboardBody(tabItems(
+    #tab_home
     tabItem(
       tabName = "tab_home",
-      
-      # Boxes need to be put in a row (or column)
       fluidRow(
         div(img(
           src = 'shiny-erp.png', align = "center", width = "450"
@@ -108,18 +116,50 @@ ui <- dashboardPage(
           tags$a(href = "mailto:christian.fischer-pauzenberger@tuwien.ac.at", "Christian Fischer-Pauzenberger")
         ),
         p("Walter S.A. Schwaiger")
-      ),
+      )
       
-      fluidRow(box(plotOutput("plot1", height = 250)),
-               box(
-                 title = "Controls",
-                 sliderInput("slider", "Number of observations:", 1, 100, 50)
-               ))
+      # fluidRow(box(plotOutput("plot1", height = 250)),
+      #          box(
+      #            title = "Controls",
+      #            sliderInput("slider", "Number of observations:", 1, 100, 50)
+      #          ))
+    ),
+    #tab tab_procurement_incoming_goods
+    tabItem(
+      tabName = "tab_procurement_incoming_goods",
+      box(  title = "Enter incoming goods details", status = "primary", width = 12, solidHeader = TRUE,
+            collapsible = TRUE,
+              
+            selectInput("proc_ig_selectInput_fromAgent", label = "Select Agent (external, supplier)", 
+                          choices = NULL, 
+                          selected = NULL),
+            selectInput("proc_ig_selectInput_material", label = "Select Resource (material)", 
+                        choices = NULL, 
+                        selected = NULL),
+            sliderInput("proc_ig_sliderInput_amount", "Amount in pcs:", 1, 100, 10),
+            selectInput("proc_ig_selectInput_toAgent", label = "Select Agent (internal, warehouse)", 
+                        choices = NULL, 
+                        selected = NULL),
+            
+            dateInput("proc_ig_selectInput_timestamp", "Date:", value = Sys.Date(), format = "dd-mm-yyyy"),
+            actionButton("proc_ig_actionButton_preview", "Preview")
+      ),
+      box(title = "Preview ", status = "primary", width = 12, solidHeader = TRUE,
+          collapsible = TRUE,
+          
+          verbatimTextOutput("proc_ig_verbatimTextOutput_preview", placeholder = TRUE),
+        
+          grVizOutput("proc_ig_grVizOutput_graph")
+      )
     )
+    
+    
+    
+    
   ))
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   set.seed(122)
   histdata <- rnorm(500)
   
@@ -127,6 +167,58 @@ server <- function(input, output) {
     data <- histdata[seq_len(input$slider)]
     hist(data)
   })
+  
+  
+  
+  # update proc_ig_selectInput_fromAgent
+  con <- dbConnect(RSQLite::SQLite(), database)
+  resultset = dbGetQuery(con, "select distinct description from agent where isExternalAgent = 1")
+  dbDisconnect(con)
+  updateSelectInput(session, "proc_ig_selectInput_fromAgent", choices = resultset$description,
+                    selected = NULL)
+  
+  # update proc_ig_selectInput_material
+  con <- dbConnect(RSQLite::SQLite(), database)
+  resultset = dbGetQuery(con, "select distinct description from material")
+  dbDisconnect(con)
+  updateSelectInput(session, "proc_ig_selectInput_material", choices = resultset$description,
+                    selected = NULL)
+  
+  # update proc_ig_selectInput_toAgent
+  con <- dbConnect(RSQLite::SQLite(), database)
+  resultset = dbGetQuery(con, "select distinct description from agent where isExternalAgent = 0")
+  dbDisconnect(con)
+  updateSelectInput(session, "proc_ig_selectInput_toAgent", choices = resultset$description,
+                    selected = NULL)
+  
+  # Observe Preview-Button
+  observeEvent(input$proc_ig_actionButton_preview, {
+
+    con <- dbConnect(RSQLite::SQLite(), database)
+    resultset = dbGetQuery(con, paste0("select distinct pricePerUnit from material where description like '",input$proc_ig_selectInput_material,"'"))
+    dbDisconnect(con)
+    
+    output$proc_ig_verbatimTextOutput_preview <-  renderText(resultset$pricePerUnit[1])
+#    output$proc_ig_verbatimTextOutput_preview <-  renderText(paste0("select distinct pricePerUnit from material where description like '",input$proc_ig_selectInput_material,"'"))
+    
+    
+    ###draw REA graph
+    output$proc_ig_grVizOutput_graph <- renderGrViz({
+      ndf <- create_node_df(n = 2, label = c(input$proc_ig_selectInput_toAgent, input$proc_ig_selectInput_fromAgent),
+                            shape = c("circle"))
+      # Create an edge data frame (edf)
+      edf <- create_edge_df(from = c(1, 2),
+                            to = c(2, 1),
+                            rel = c("a", "b"),
+                            label = c(resultset$pricePerUnit[1], input$proc_ig_selectInput_material))
+      # Create a graph with the ndf and edf
+      graph <- create_graph(nodes_df = ndf,
+                            edges_df = edf,
+                            attr_theme = NULL)
+      render_graph(graph)
+    })
+  })
+  
 }
 
 shinyApp(ui, server)
