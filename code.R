@@ -17,5 +17,12 @@ library(RSQLite)
 database <- "db.sqlite"
 con <- dbConnect(RSQLite::SQLite(), database)
 resultset = dbGetQuery(con, "select distinct pricePerUnit from material where description like 'FER-01'")
-dbDisconnect(con)
 resultset$pricePerUnit[1]
+
+alltables = dbListTables(con)
+dbDisconnect(con)
+
+
+con <- dbConnect(RSQLite::SQLite(), database)
+resultset = alltables = dbListTables(con)
+dbDisconnect(con)

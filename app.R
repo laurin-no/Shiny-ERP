@@ -8,6 +8,7 @@ library(dygraphs)
 library(V8)
 library(diagram)
 library(DiagrammeR)
+library(DT)
 
 
 database <- "db.sqlite"
@@ -151,13 +152,24 @@ ui <- dashboardPage(
         
           grVizOutput("proc_ig_grVizOutput_graph")
       )
+    ),
+    
+    tabItem(
+      tabName = "tab_tablebrowser",
+      box(  title = "Table Browser", status = "primary", width = 12, solidHeader = TRUE,
+            collapsible = TRUE,
+            selectInput("datawarehouse_tb_selectInput_table", label = "Select table of interest", 
+                        choices = NULL, 
+                        selected = NULL),
+            actionButton("datawarehouse_tb_actionButton_go", "Go")
+    ),
+      box(  title = "Table Browser", status = "primary", width = 12, solidHeader = TRUE,
+            collapsible = TRUE,
+            dataTableOutput('datawarehouse_tb_dataTable_table')
+            
+      )
     )
-    
-    
-    
-    
-  ))
-)
+  )))
 
 server <- function(input, output, session) {
   set.seed(122)
@@ -191,6 +203,16 @@ server <- function(input, output, session) {
   updateSelectInput(session, "proc_ig_selectInput_toAgent", choices = resultset$description,
                     selected = NULL)
   
+  
+
+  # update datawarehouse_tb_selectInput_table
+  con <- dbConnect(RSQLite::SQLite(), database)
+  resultset <- dbListTables(con)
+  dbDisconnect(con)
+  updateSelectInput(session, "datawarehouse_tb_selectInput_table", choices = resultset,
+                    selected = NULL)
+  
+  
   # Observe Preview-Button
   observeEvent(input$proc_ig_actionButton_preview, {
 
@@ -199,9 +221,7 @@ server <- function(input, output, session) {
     dbDisconnect(con)
     
     output$proc_ig_verbatimTextOutput_preview <-  renderText(resultset$pricePerUnit[1])
-#    output$proc_ig_verbatimTextOutput_preview <-  renderText(paste0("select distinct pricePerUnit from material where description like '",input$proc_ig_selectInput_material,"'"))
-    
-    
+
     ###draw REA graph
     output$proc_ig_grVizOutput_graph <- renderGrViz({
       ndf <- create_node_df(n = 2, label = c(input$proc_ig_selectInput_toAgent, input$proc_ig_selectInput_fromAgent),
@@ -219,6 +239,21 @@ server <- function(input, output, session) {
     })
   })
   
+  #observe button datawarehouse_tb_actionButton_go
+  observeEvent(input$datawarehouse_tb_actionButton_go, {
+    
+    con <- dbConnect(RSQLite::SQLite(), database)
+    resultset = dbGetQuery(con, paste0("select * from ",input$datawarehouse_tb_selectInput_table))
+    dbDisconnect(con)
+    #write to datatable
+  
+    output$datawarehouse_tb_dataTable_table <- renderDataTable({
+      resultset
+    })
+    
+    #output$proc_ig_verbatimTextOutput_preview <-  renderText(resultset$pricePerUnit[1])
+  
+    })
 }
 
 shinyApp(ui, server)
