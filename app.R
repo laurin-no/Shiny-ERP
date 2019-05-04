@@ -11,7 +11,6 @@ library(DiagrammeR)
 library(DT)
 
 
-
 database <- "db.sqlite"
 
 
