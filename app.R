@@ -4,10 +4,21 @@ library(DT)
 library(DBI)
 library(RSQLite)
 library(xts)
+<<<<<<< HEAD
 library(data.table)
 library(data.tree)
 library(openxlsx)
 library(rpivotTable)
+=======
+library(dygraphs)
+library(V8)
+library(diagram)
+library(DiagrammeR)
+library(DT)
+
+
+database <- "db.sqlite"
+>>>>>>> 72b3678d82874ca0b317fbac62a8710e6ad821ee
 
 server <- function(input, output, session) {
   source('modules/1000//server.R', local = environment())$value
