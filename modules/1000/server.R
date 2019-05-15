@@ -6,6 +6,11 @@ observeEvent(
   {
     con <- DBI::dbConnect(dbDriver("SQLite"),"EIS.sqlite")
     df_sql <- DBI::dbReadTable(con, "Material")
+    
+    # Assignment 1
+    df_sql$pricePerUnit <- df_sql$pricePerUnit / 100
+    df_sql$priceUoM <- "EUR/kg"
+    
     DBI::dbDisconnect(con)
     
     output$dataTableOutput_1000 <- renderDataTable({
